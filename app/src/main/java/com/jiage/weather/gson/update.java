@@ -5,7 +5,7 @@ import com.google.gson.annotations.SerializedName;
 public class update {
 
         @SerializedName("loc")
-        public String updatetimel;
+        public String updatetimelocate;
         @SerializedName("utc")
-        public String updatetime;
+        public String updatetimeutc;
 }
