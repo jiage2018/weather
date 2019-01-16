@@ -22,6 +22,9 @@ import android.widget.Toast;
 import com.bumptech.glide.Glide;
 import com.jiage.weather.gson.Forecast;
 import com.jiage.weather.gson.Weather;
+import com.jiage.weather.gson.WeatherAqi;
+import com.jiage.weather.gson.WeatherStyle;
+import com.jiage.weather.gson.Lifestyle;
 import com.jiage.weather.service.AutoUpdateService;
 import com.jiage.weather.util.HttpUtil;
 import com.jiage.weather.util.Utility;
@@ -57,17 +60,20 @@ public class WeatherActivity  extends AppCompatActivity {
 
     private TextView comfortText;
 
-    private TextView carWashText;
+    private TextView uvText;
 
     private TextView sportText;
 
     private ImageView bingPicImg;
 
-    private String mWeatherId;
+    private LinearLayout aqilayout;
+
+    private TextView kqzsText;
 
     @Override
     protected void onCreate(Bundle savedInstanceState){
         super.onCreate(savedInstanceState);
+        //状态栏透明效果
         if(Build.VERSION.SDK_INT>=21){
             View decorView = getWindow().getDecorView();
             decorView.setSystemUiVisibility(View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN
@@ -85,20 +91,38 @@ public class WeatherActivity  extends AppCompatActivity {
         aqiText = (TextView) findViewById(R.id.aqi_text);
         pm25Text = (TextView) findViewById(R.id.pm25_text);
         comfortText = (TextView) findViewById(R.id.comfort_text);
-        carWashText = (TextView) findViewById(R.id.car_wash_text);
+        uvText = (TextView) findViewById(R.id.uv_text);
         sportText = (TextView) findViewById(R.id.sport_text);
         bingPicImg = (ImageView)findViewById(R.id.bing_pic_img);
         swipeRefresh = (SwipeRefreshLayout)findViewById(R.id.swipe_refresh);
         swipeRefresh.setColorSchemeResources(R.color.colorPrimary);
         drawerLayout = (DrawerLayout)findViewById(R.id.drawer_layout);
         navButton = (Button)findViewById(R.id.nav_button);
+        aqilayout = (LinearLayout) findViewById(R.id.aqi_layout);
+        kqzsText = (TextView) findViewById(R.id.kqzs_text);
+        //显示BING的搜索引擎背景图
+        loadBingPic();
+        //读取缓存里面的历史天气，还需要判断如果缓存是昨天天气。那么就要强制更新
         SharedPreferences prefs = PreferenceManager.getDefaultSharedPreferences(this);
         String weatherString = prefs.getString("weather",null);
         final String weatherId;
         if(weatherString!=null){
             Weather weather = Utility.handleWeatherResponse(weatherString);
             weatherId = weather.basic.weatherId;
+            String weatherStyleString = prefs.getString("weatherStyle",null);
+            String weatherAqiString = prefs.getString("weatherAqi",null);
+            WeatherAqi weatherAqi = Utility.handleWeatherAQIResponse(weatherAqiString);
+            WeatherStyle weatherStyle = Utility.handleWeatherStyleResponse(weatherStyleString);
             showWeatherInfo(weather);
+            if(weatherAqi!=null) {
+                showWeatherAQI(weatherAqi);
+            }else {
+                aqilayout.setVisibility(View.GONE);
+            }
+            if(weatherStyle!=null) {
+                showWeatherStyle(weatherStyle);
+            }
+
         }else{
             weatherId = getIntent().getStringExtra("weather_id");
             weatherLayout.setVisibility(View.INVISIBLE);
@@ -130,6 +154,7 @@ public class WeatherActivity  extends AppCompatActivity {
     //https://free-api.heweather.com/s6/weather/forecast?key=5c043b56de9f4371b0c7f8bee8f5b75e&location=shishou
     //https://free-api.heweather.net/s6/weather/forecast?key=1dd4d0ebca834cc6a22c41364da7eb7e&location=CN101200804
     public void requestWeather(final String weatherId) {
+
         String weatherUrl = "https://free-api.heweather.net/s6/weather/forecast?key=1dd4d0ebca834cc6a22c41364da7eb7e&location=" + weatherId;
         HttpUtil.sendOkHttpRequest(weatherUrl, new Callback() {
             @Override
@@ -143,6 +168,8 @@ public class WeatherActivity  extends AppCompatActivity {
                             SharedPreferences.Editor editor = PreferenceManager.getDefaultSharedPreferences(WeatherActivity.this).edit();
                             editor.putString("weather",responseText);
                             editor.apply();
+                            requestWeatherSytle(weatherId); //查询天气生活指数
+                            requestWeatherAQI(weatherId);   //查询PM2.5及API指数
                             showWeatherInfo(weather);
                         }else{
                             Toast.makeText(WeatherActivity.this,"获取天气信息失败",Toast.LENGTH_SHORT).show();
@@ -164,7 +191,75 @@ public class WeatherActivity  extends AppCompatActivity {
                 });
             }
         });
-        loadBingPic();
+
+
+    }
+
+    /**
+     * 全国部分城市天气AQI及PM2.5指数显示
+     * 例如：https://free-api.heweather.net/s6/air/now?key=1dd4d0ebca834cc6a22c41364da7eb7e&location=yichang
+     */
+    public void requestWeatherAQI(final String weatherId) {
+        String weatherUrl = "https://free-api.heweather.net/s6/air/now?key=1dd4d0ebca834cc6a22c41364da7eb7e&location=" + weatherId;
+        HttpUtil.sendOkHttpRequest(weatherUrl, new Callback() {
+            @Override
+            public void onResponse(Call call, Response response) throws IOException {
+                final String responseText = response.body().string();
+                final WeatherAqi weatherAqi = Utility.handleWeatherAQIResponse(responseText);
+                runOnUiThread(new Runnable(){
+                    @Override
+                    public void run(){
+                        SharedPreferences.Editor editor = PreferenceManager.getDefaultSharedPreferences(WeatherActivity.this).edit();
+                        if(weatherAqi != null && "ok".equals(weatherAqi.status)){
+                            editor.putString("weatherAqi",responseText);
+                            aqilayout.setVisibility(View.VISIBLE);
+                            showWeatherAQI(weatherAqi);
+                        }else{
+                            //没查询到AQI值，则数据错误或者该城市没AQI或者PM2.5，隐藏该布局
+                            editor.putString("weatherAqi",null);
+                            aqilayout.setVisibility(View.GONE);
+                        }
+                        editor.apply();
+                    }
+                });
+            }
+
+            @Override
+            public void onFailure(Call call, IOException e) {
+                e.printStackTrace();
+            }
+        });
+    }
+    /**
+     * 加载生活指数
+     */
+    public void requestWeatherSytle(final String weatherId) {
+        String weatherUrl = "https://free-api.heweather.net/s6/weather/lifestyle?key=1dd4d0ebca834cc6a22c41364da7eb7e&location=" + weatherId;
+        HttpUtil.sendOkHttpRequest(weatherUrl, new Callback() {
+            @Override
+            public void onResponse(Call call, Response response) throws IOException {
+                final String responseText = response.body().string();
+                final WeatherStyle weatherStyle = Utility.handleWeatherStyleResponse(responseText);
+                runOnUiThread(new Runnable(){
+                    @Override
+                    public void run(){
+                        if(weatherStyle != null && "ok".equals(weatherStyle.status)){
+
+                            SharedPreferences.Editor editor = PreferenceManager.getDefaultSharedPreferences(WeatherActivity.this).edit();
+                            editor.putString("weatherStyle",responseText);
+                            editor.apply();
+
+                            showWeatherStyle(weatherStyle);
+                        }
+                    }
+                });
+            }
+
+            @Override
+            public void onFailure(Call call, IOException e) {
+                e.printStackTrace();
+            }
+        });
     }
     /**
      * 加载必应每日一图
@@ -223,15 +318,36 @@ public class WeatherActivity  extends AppCompatActivity {
             minText.setText(forecast.tmp_min);
             forecastLayout.addView(view);
         }
-        //String comfort = "舒适度：" + weather.suggestion.comfort.info;
-        //String carWash = "洗车指数：" + weather.suggestion.carWash.info;
-        //String sport = "运行建议：" + weather.suggestion.sport.info;
-        //comfortText.setText(comfort);
-        //carWashText.setText(carWash);
-        //sportText.setText(sport);
 
         weatherLayout.setVisibility(View.VISIBLE);
         Intent intent = new Intent(this, AutoUpdateService.class);
         startService(intent);
+    }
+
+    /**
+     * 处理并展示WeatherSytle 实体类中的数据--生活指数。
+     */
+    private void showWeatherStyle(WeatherStyle weatherstyle){
+
+        for(Lifestyle lifestylelist:weatherstyle.Weatherlifestyle)
+        {
+            if(lifestylelist.type.equals("comf")) {
+                comfortText.setText("舒适度：" + lifestylelist.txt);
+            }else if(lifestylelist.type.equals("uv")){
+                uvText.setText("空气指数：" + lifestylelist.txt);
+            }else if(lifestylelist.type.equals("sport")){
+                sportText.setText("运动建议：" + lifestylelist.txt);
+            }
+        }
+    }
+
+    /**
+     * 处理并展示WeatherAQI  实体类中的数据--PM2.5及 AQI指数。
+     */
+    private void showWeatherAQI(WeatherAqi weatherAqi){
+        //最后更新时间+空气指数
+        kqzsText.setText("空气质量：" + weatherAqi.weatheraqi.qlty);
+        aqiText.setText(weatherAqi.weatheraqi.aqi);
+        pm25Text.setText(weatherAqi.weatheraqi.pm25);
     }
 }

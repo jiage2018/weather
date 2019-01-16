@@ -7,6 +7,8 @@ import com.jiage.weather.db.City;
 import com.jiage.weather.db.County;
 import com.jiage.weather.db.Province;
 import com.jiage.weather.gson.Weather;
+import com.jiage.weather.gson.WeatherAqi;
+import com.jiage.weather.gson.WeatherStyle;
 
 import org.json.JSONArray;
 import org.json.JSONException;
@@ -85,6 +87,30 @@ public class Utility {
             JSONArray jsonArray = jsonObject.getJSONArray("HeWeather6");
             String weatherContent = jsonArray.getJSONObject(0).toString();
             return new Gson().fromJson(weatherContent,Weather.class);
+        }catch (Exception e){
+            e.printStackTrace();
+        }
+        return null;
+    }
+
+    public static WeatherStyle handleWeatherStyleResponse(String response){
+        try {
+            JSONObject jsonObject = new JSONObject(response);
+            JSONArray jsonArray = jsonObject.getJSONArray("HeWeather6");
+            String weatherContent = jsonArray.getJSONObject(0).toString();
+            return new Gson().fromJson(weatherContent,WeatherStyle.class);
+        }catch (Exception e){
+            e.printStackTrace();
+        }
+        return null;
+    }
+
+    public static WeatherAqi handleWeatherAQIResponse(String response){
+        try {
+            JSONObject jsonObject = new JSONObject(response);
+            JSONArray jsonArray = jsonObject.getJSONArray("HeWeather6");
+            String weatherContent = jsonArray.getJSONObject(0).toString();
+            return new Gson().fromJson(weatherContent, WeatherAqi.class);
         }catch (Exception e){
             e.printStackTrace();
         }
