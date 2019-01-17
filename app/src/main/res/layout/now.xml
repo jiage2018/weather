@@ -16,6 +16,8 @@
         android:layout_height="wrap_content"
         android:layout_gravity="end"
         android:textColor="#fff"
+        android:drawableLeft="@drawable/icon_sunny"
+        android:drawablePadding="4.0dip"
         android:textSize="20sp"/>
 
 </LinearLayout>
